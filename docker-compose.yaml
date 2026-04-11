@@ -482,7 +482,7 @@ services:
       - /home/deno/functions/main
 
   supabase-supavisor:
-    image: 'supabase/supavisor:2.8.0'
+    image: 'supabase/supavisor:2.7.4'
     healthcheck:
       test:
         - CMD

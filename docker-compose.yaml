@@ -11,6 +11,7 @@ services:
       - /bin/sh
       - '-c'
       - |
+        mkdir -p /home/kong
         cp /supabase-config/volumes/api/kong-entrypoint.sh /home/kong/kong-entrypoint.sh
         cp /supabase-config/volumes/api/kong.yml /home/kong/temp.yml
         chmod +x /home/kong/kong-entrypoint.sh
@@ -478,7 +479,7 @@ services:
       - 'DATABASE_URL=ecto://supabase_admin:${POSTGRES_PASSWORD:-your-super-secret-and-long-postgres-password}@${POSTGRES_HOSTNAME:-supabase-db}:${POSTGRES_PORT:-5432}/_supabase'
       - CLUSTER_POSTGRES=true
       - 'SECRET_KEY_BASE=${SUPAVISOR_SECRET:-your-super-secret-and-long-supavisor-secret-base-key-that-is-at-least-64-chars}'
-      - 'VAULT_ENC_KEY=${VAULT_ENC_KEY:-your-super-secret-32-char-key!!}'
+      - 'VAULT_ENC_KEY=${VAULT_ENC_KEY:-aGVsbG93b3JsZHRoaXNpc2FrZXkxMg==}'
       - API_JWT_SECRET=${JWT_SECRET:-super-secret-jwt-token-with-at-least-32-characters-long}
       - METRICS_JWT_SECRET=${JWT_SECRET:-super-secret-jwt-token-with-at-least-32-characters-long}
       - REGION=local

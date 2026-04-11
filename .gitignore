@@ -1,0 +1,19 @@
+# Environment
+.env
+
+# Storage data
+volumes/storage/*
+!volumes/storage/.gitkeep
+
+# Snippets
+volumes/snippets/*
+!volumes/snippets/.gitkeep
+
+# Docker volumes
+supabase-db-data/
+supabase-db-config/
+deno-cache/
+
+# OS
+.DS_Store
+Thumbs.db

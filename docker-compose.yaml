@@ -13,8 +13,9 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    ports:
+      - '8000:8000'
     environment:
-      - SERVICE_URL_SUPABASEKONG_8000
       - 'KONG_PORT_MAPS=443:8000'
       - 'JWT_SECRET=${SERVICE_PASSWORD_JWT}'
       - KONG_DATABASE=off
@@ -216,7 +217,6 @@ services:
       - 'PGRST_APP_SETTINGS_JWT_SECRET=${SERVICE_PASSWORD_JWT}'
       - 'PGRST_APP_SETTINGS_JWT_EXP=${JWT_EXPIRY:-3600}'
     command: postgrest
-    exclude_from_hc: true
 
   supabase-auth:
     image: 'supabase/gotrue:v2.188.1'

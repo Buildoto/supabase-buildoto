@@ -1,8 +1,23 @@
 services:
+  config-init:
+    build: .
+    volumes:
+      - supabase-config:/shared
+    restart: 'no'
+
   supabase-kong:
     image: 'kong/kong:3.9.1'
-    entrypoint: /home/kong/kong-entrypoint.sh
+    entrypoint:
+      - /bin/sh
+      - '-c'
+      - |
+        cp /supabase-config/volumes/api/kong-entrypoint.sh /home/kong/kong-entrypoint.sh
+        cp /supabase-config/volumes/api/kong.yml /home/kong/temp.yml
+        chmod +x /home/kong/kong-entrypoint.sh
+        exec /home/kong/kong-entrypoint.sh
     depends_on:
+      config-init:
+        condition: service_completed_successfully
       supabase-analytics:
         condition: service_healthy
     healthcheck:
@@ -40,12 +55,7 @@ services:
       - 'KONG_STORAGE_REQUEST_BUFFERING=${KONG_STORAGE_REQUEST_BUFFERING:-false}'
       - 'KONG_STORAGE_RESPONSE_BUFFERING=${KONG_STORAGE_RESPONSE_BUFFERING:-false}'
     volumes:
-      - type: bind
-        source: ./volumes/api/kong-entrypoint.sh
-        target: /home/kong/kong-entrypoint.sh
-      - type: bind
-        source: ./volumes/api/kong.yml
-        target: /home/kong/temp.yml
+      - supabase-config:/supabase-config:ro
 
   supabase-studio:
     image: 'supabase/studio:2026.04.08-sha-205cbe7'
@@ -59,6 +69,8 @@ services:
       interval: 5s
       retries: 3
     depends_on:
+      config-init:
+        condition: service_completed_successfully
       supabase-analytics:
         condition: service_healthy
     environment:
@@ -91,8 +103,9 @@ services:
       - SNIPPETS_MANAGEMENT_FOLDER=/app/snippets
       - EDGE_FUNCTIONS_MANAGEMENT_FOLDER=/app/edge-functions
     volumes:
-      - './volumes/snippets:/app/snippets'
-      - './volumes/functions:/app/edge-functions'
+      - supabase-config:/supabase-config:ro
+      - supabase-snippets:/app/snippets
+      - supabase-functions:/app/edge-functions
 
   supabase-db:
     image: 'supabase/postgres:15.8.1.085'
@@ -102,14 +115,23 @@ services:
       timeout: 5s
       retries: 10
     depends_on:
+      config-init:
+        condition: service_completed_successfully
       supabase-vector:
         condition: service_healthy
-    command:
-      - postgres
+    entrypoint:
+      - /bin/sh
       - '-c'
-      - config_file=/etc/postgresql/postgresql.conf
-      - '-c'
-      - log_min_messages=fatal
+      - |
+        mkdir -p /docker-entrypoint-initdb.d/migrations /docker-entrypoint-initdb.d/init-scripts
+        cp /supabase-config/volumes/db/realtime.sql /docker-entrypoint-initdb.d/migrations/99-realtime.sql
+        cp /supabase-config/volumes/db/_supabase.sql /docker-entrypoint-initdb.d/migrations/97-_supabase.sql
+        cp /supabase-config/volumes/db/pooler.sql /docker-entrypoint-initdb.d/migrations/99-pooler.sql
+        cp /supabase-config/volumes/db/logs.sql /docker-entrypoint-initdb.d/migrations/99-logs.sql
+        cp /supabase-config/volumes/db/webhooks.sql /docker-entrypoint-initdb.d/init-scripts/98-webhooks.sql
+        cp /supabase-config/volumes/db/roles.sql /docker-entrypoint-initdb.d/init-scripts/99-roles.sql
+        cp /supabase-config/volumes/db/jwt.sql /docker-entrypoint-initdb.d/init-scripts/99-jwt.sql
+        exec /usr/local/bin/docker-entrypoint.sh postgres -c config_file=/etc/postgresql/postgresql.conf -c log_min_messages=fatal
     environment:
       - POSTGRES_HOST=/var/run/postgresql
       - 'PGPORT=${POSTGRES_PORT:-5432}'
@@ -121,29 +143,9 @@ services:
       - 'JWT_SECRET=${JWT_SECRET}'
       - 'JWT_EXP=${JWT_EXPIRY:-3600}'
     volumes:
-      - 'supabase-db-data:/var/lib/postgresql/data'
-      - type: bind
-        source: ./volumes/db/realtime.sql
-        target: /docker-entrypoint-initdb.d/migrations/99-realtime.sql
-      - type: bind
-        source: ./volumes/db/_supabase.sql
-        target: /docker-entrypoint-initdb.d/migrations/97-_supabase.sql
-      - type: bind
-        source: ./volumes/db/pooler.sql
-        target: /docker-entrypoint-initdb.d/migrations/99-pooler.sql
-      - type: bind
-        source: ./volumes/db/webhooks.sql
-        target: /docker-entrypoint-initdb.d/init-scripts/98-webhooks.sql
-      - type: bind
-        source: ./volumes/db/roles.sql
-        target: /docker-entrypoint-initdb.d/init-scripts/99-roles.sql
-      - type: bind
-        source: ./volumes/db/jwt.sql
-        target: /docker-entrypoint-initdb.d/init-scripts/99-jwt.sql
-      - type: bind
-        source: ./volumes/db/logs.sql
-        target: /docker-entrypoint-initdb.d/migrations/99-logs.sql
-      - 'supabase-db-config:/etc/postgresql-custom'
+      - supabase-config:/supabase-config:ro
+      - supabase-db-data:/var/lib/postgresql/data
+      - supabase-db-config:/etc/postgresql-custom
 
   supabase-analytics:
     image: 'supabase/logflare:1.31.2'
@@ -187,17 +189,17 @@ services:
       timeout: 5s
       interval: 5s
       retries: 3
+    depends_on:
+      config-init:
+        condition: service_completed_successfully
     volumes:
-      - type: bind
-        source: ./volumes/logs/vector.yml
-        target: /etc/vector/vector.yml
-        read_only: true
+      - supabase-config:/supabase-config:ro
       - '/var/run/docker.sock:/var/run/docker.sock:ro'
     environment:
       - 'LOGFLARE_PUBLIC_ACCESS_TOKEN=${LOGFLARE_API_KEY}'
     command:
       - '--config'
-      - /etc/vector/vector.yml
+      - /supabase-config/volumes/logs/vector.yml
 
   supabase-rest:
     image: 'postgrest/postgrest:v14.7'
@@ -278,7 +280,6 @@ services:
 
   realtime-dev:
     image: 'supabase/realtime:v2.78.12'
-    container_name: realtime-dev.supabase-realtime
     depends_on:
       supabase-db:
         condition: service_healthy
@@ -339,7 +340,7 @@ services:
       timeout: 20s
       retries: 10
     volumes:
-      - './volumes/storage:/data'
+      - supabase-storage-data:/data
 
   minio-createbucket:
     image: minio/mc
@@ -348,14 +349,19 @@ services:
       - 'MINIO_ROOT_USER=${MINIO_ROOT_USER}'
       - 'MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}'
     depends_on:
+      config-init:
+        condition: service_completed_successfully
       supabase-minio:
         condition: service_healthy
     entrypoint:
-      - /entrypoint.sh
+      - /bin/sh
+      - '-c'
+      - |
+        cp /supabase-config/entrypoint.sh /tmp/entrypoint.sh
+        chmod +x /tmp/entrypoint.sh
+        exec /tmp/entrypoint.sh
     volumes:
-      - type: bind
-        source: ./entrypoint.sh
-        target: /entrypoint.sh
+      - supabase-config:/supabase-config:ro
 
   supabase-storage:
     image: 'supabase/storage-api:v1.48.26'
@@ -409,7 +415,7 @@ services:
       - 'STORAGE_PUBLIC_URL=${SUPABASE_PUBLIC_URL}'
       - 'TENANT_ID=${STORAGE_TENANT_ID:-storage-single-tenant}'
     volumes:
-      - './volumes/storage:/var/lib/storage'
+      - supabase-storage-data:/var/lib/storage
 
   imgproxy:
     image: 'darthsim/imgproxy:v3.30.1'
@@ -428,7 +434,7 @@ services:
       - 'IMGPROXY_AUTO_WEBP=${IMGPROXY_AUTO_WEBP:-true}'
       - IMGPROXY_MAX_SRC_RESOLUTION=16.8
     volumes:
-      - './volumes/storage:/var/lib/storage'
+      - supabase-storage-data:/var/lib/storage
 
   supabase-meta:
     image: 'supabase/postgres-meta:v0.96.1'
@@ -449,6 +455,8 @@ services:
   supabase-edge-functions:
     image: 'supabase/edge-runtime:v1.73.3'
     depends_on:
+      config-init:
+        condition: service_completed_successfully
       supabase-analytics:
         condition: service_healthy
     healthcheck:
@@ -459,6 +467,12 @@ services:
       timeout: 5s
       interval: 5s
       retries: 3
+    entrypoint:
+      - /bin/sh
+      - '-c'
+      - |
+        cp -a /supabase-config/volumes/functions/. /home/deno/functions/
+        exec /usr/local/bin/edge-runtime start --main-service /home/deno/functions/main
     environment:
       - 'JWT_SECRET=${JWT_SECRET}'
       - 'SUPABASE_URL=http://supabase-kong:8000'
@@ -468,18 +482,9 @@ services:
       - 'SUPABASE_DB_URL=postgresql://postgres:${POSTGRES_PASSWORD}@${POSTGRES_HOSTNAME:-supabase-db}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-postgres}'
       - 'VERIFY_JWT=${FUNCTIONS_VERIFY_JWT:-false}'
     volumes:
-      - './volumes/functions:/home/deno/functions'
-      - 'deno-cache:/root/.cache/deno'
-      - type: bind
-        source: ./volumes/functions/main/index.ts
-        target: /home/deno/functions/main/index.ts
-      - type: bind
-        source: ./volumes/functions/hello/index.ts
-        target: /home/deno/functions/hello/index.ts
-    command:
-      - start
-      - '--main-service'
-      - /home/deno/functions/main
+      - supabase-config:/supabase-config:ro
+      - supabase-functions:/home/deno/functions
+      - deno-cache:/root/.cache/deno
 
   supabase-supavisor:
     image: 'supabase/supavisor:2.7.4'
@@ -496,10 +501,24 @@ services:
       retries: 10
       start_period: 30s
     depends_on:
+      config-init:
+        condition: service_completed_successfully
       supabase-db:
         condition: service_healthy
       supabase-analytics:
         condition: service_healthy
+    entrypoint:
+      - /bin/sh
+      - '-c'
+      - |
+        mkdir -p /etc/pooler
+        cp /supabase-config/volumes/pooler/pooler.exs /etc/pooler/pooler.exs
+        if [ ! -f /etc/ssl/server.crt ]; then
+          openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
+            -keyout /etc/ssl/server.key -out /etc/ssl/server.crt \
+            -subj "/CN=supabase-pooler"
+        fi
+        exec /app/bin/migrate && /app/bin/supavisor eval "$$(cat /etc/pooler/pooler.exs)" && /app/bin/server
     environment:
       - 'POOLER_TENANT_ID=${POOLER_TENANT_ID:-dev_tenant}'
       - POOLER_POOL_MODE=transaction
@@ -521,22 +540,14 @@ services:
       - 'DB_POOL_SIZE=${POOLER_DB_POOL_SIZE:-5}'
       - GLOBAL_DOWNSTREAM_CERT_PATH=/etc/ssl/server.crt
       - GLOBAL_DOWNSTREAM_KEY_PATH=/etc/ssl/server.key
-    command:
-      - /bin/sh
-      - '-c'
-      - |
-        if [ ! -f /etc/ssl/server.crt ]; then
-          openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
-            -keyout /etc/ssl/server.key -out /etc/ssl/server.crt \
-            -subj "/CN=supabase-pooler"
-        fi
-        /app/bin/migrate && /app/bin/supavisor eval "$$(cat /etc/pooler/pooler.exs)" && /app/bin/server
     volumes:
-      - type: bind
-        source: ./volumes/pooler/pooler.exs
-        target: /etc/pooler/pooler.exs
+      - supabase-config:/supabase-config:ro
 
 volumes:
+  supabase-config:
   supabase-db-data:
   supabase-db-config:
+  supabase-storage-data:
+  supabase-functions:
+  supabase-snippets:
   deno-cache:

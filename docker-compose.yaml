@@ -11,11 +11,11 @@ services:
       - /bin/sh
       - '-c'
       - |
-        mkdir -p /home/kong
-        cp /supabase-config/volumes/api/kong-entrypoint.sh /home/kong/kong-entrypoint.sh
-        cp /supabase-config/volumes/api/kong.yml /home/kong/temp.yml
-        chmod +x /home/kong/kong-entrypoint.sh
-        exec /home/kong/kong-entrypoint.sh
+        cp /supabase-config/volumes/api/kong-entrypoint.sh /tmp/kong-entrypoint.sh
+        cp /supabase-config/volumes/api/kong.yml /tmp/temp.yml
+        chmod +x /tmp/kong-entrypoint.sh
+        export KONG_TEMP_YML=/tmp/temp.yml
+        exec /tmp/kong-entrypoint.sh
     depends_on:
       config-init:
         condition: service_completed_successfully

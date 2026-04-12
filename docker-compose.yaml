@@ -188,11 +188,7 @@ services:
 
   supabase-rest:
     image: 'postgrest/postgrest:v14.7'
-    healthcheck:
-      test: ['CMD-SHELL', 'curl -sf http://127.0.0.1:3000/ready || exit 1']
-      interval: 5s
-      timeout: 5s
-      retries: 3
+    exclude_from_hc: true
     depends_on:
       supabase-db:
         condition: service_healthy
@@ -402,7 +398,7 @@ services:
   supabase-meta:
     image: 'supabase/postgres-meta:v0.96.1'
     healthcheck:
-      test: ['CMD-SHELL', 'curl -sf http://127.0.0.1:8080/health || exit 1']
+      test: ['CMD-SHELL', "node -e \"fetch('http://127.0.0.1:8080/health').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))\""]
       interval: 5s
       timeout: 5s
       retries: 3
